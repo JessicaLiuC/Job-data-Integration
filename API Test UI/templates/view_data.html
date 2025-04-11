@@ -1,0 +1,81 @@
+
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>{{ source|capitalize }} Data</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet">
+        <style>
+            pre {
+                background-color: #f8f9fa;
+                padding: 15px;
+                border-radius: 5px;
+                max-height: 500px;
+                overflow-y: auto;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container mt-4">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="/">Home</a></li>
+                    <li class="breadcrumb-item active">{{ source|capitalize }} Data</li>
+                </ol>
+            </nav>
+            
+            <div class="card">
+                <div class="card-header">
+                    <h3>{{ source|capitalize }} API Data <span class="badge bg-primary">{{ count }} items</span></h3>
+                </div>
+                <div class="card-body">
+                    {% if data %}
+                        <div class="mb-4">
+                            <h4>Data Preview</h4>
+                            {% for job in data[:] %}
+                                <div class="card mb-3">
+                                    <div class="card-body">
+                                        {% if source == 'muse' %}
+                                            <h5>{{ job.name }}</h5>
+                                            <p><strong>Company:</strong> {{ job.company.name if job.company else 'N/A' }}</p>
+                                            <p><strong>ID:</strong> {{ job.id }}</p>
+                                            {% if job.locations %}
+                                                <p><strong>Location:</strong> {{ job.locations[0].name if job.locations else 'N/A' }}</p>
+                                            {% endif %}
+                                            <p><strong>Publication Date:</strong> {{ job.publication_date }}</p>
+                                        {% elif source == 'adzuna' %}
+                                            <h5>{{ job.title }}</h5>
+                                            <p><strong>Company:</strong> {{ job.company.display_name if job.company else 'N/A' }}</p>
+                                            <p><strong>ID:</strong> {{ job.id }}</p>
+                                            <p><strong>Location:</strong> {{ job.location.display_name if job.location else 'N/A' }}</p>
+                                            <p><strong>Created:</strong> {{ job.created }}</p>
+                                            {% if job.salary_min and job.salary_max %}
+                                                <p><strong>Salary:</strong> ${{ job.salary_min }} - ${{ job.salary_max }}</p>
+                                            {% endif %}
+                                        {% elif source == 'hackernews' %}
+                                            <h5>{{ job.title if job.title else 'Job at ' + job.company if job.company else 'Hacker News Job Post' }}</h5>
+                                            <p><strong>Company:</strong> {{ job.company if job.company else 'N/A' }}</p>
+                                            <p><strong>ID:</strong> {{ job.job_id }}</p>
+                                            <p><strong>Posted Date:</strong> {{ job.posted_date }}</p>
+                                            <p><strong>Location:</strong> {{ job.location if job.location else 'N/A' }}</p>
+                                            {% if job.skills_required %}
+                                                <p><strong>Skills:</strong> {{ ', '.join(job.skills_required) }}</p>
+                                            {% endif %}
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                        
+                        <h4>Raw JSON Data</h4>
+                        <pre><code>{{ data|tojson(indent=2) }}</code></pre>
+                    {% else %}
+                        <div class="alert alert-warning">No data available.</div>
+                    {% endif %}
+                    
+                    <a href="/" class="btn btn-primary mt-3">Back to Home</a>
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>
+    
