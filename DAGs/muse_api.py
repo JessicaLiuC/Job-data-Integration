@@ -1,7 +1,5 @@
 """
-The Muse API Connector
-----------------------
-Extracts job data from The Muse API, focused on creative & design jobs.
+Make API calls and pull the data down into json files
 """
 import os
 import json
@@ -10,7 +8,7 @@ import time
 from typing import Dict, List, Optional, Any
 import requests
 
-# logging for debug
+# logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -50,7 +48,9 @@ class MuseConnector:
         return all_jobs
     
     def _fetch_jobs_page(self, category: str, page: int, count: int) -> List[Dict[str, Any]]:
+        
         url = f"{self.BASE_URL}"
+        
         params = {
             "api_key": self.api_key,
             "categories": category,
@@ -63,7 +63,6 @@ class MuseConnector:
                 response = requests.get(url, params=params)
                 response.raise_for_status()
                 return response.json()
-                
             except requests.RequestException as e:
                 logger.warning(f"Attempt {attempt + 1}/{self.max_retries} failed: {str(e)}")
                 if attempt < self.max_retries - 1:
@@ -71,9 +70,8 @@ class MuseConnector:
                 else:
                     raise
 
-# Example usage
 if __name__ == "__main__":
-    # For local testing
+    # put api key in environment variable
     api_key = os.environ.get("MUSE_API_KEY")
     categories = ["ux", "product management", "project management", "software engineer"]
     

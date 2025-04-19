@@ -1,17 +1,14 @@
 """
-Adzuna API Connector
----------------------
-Extracts job data from Adzuna API, focused on technical & engineering roles.
+Make API calls and pull the data down into json files
 """
 import os
 import json
 import logging
 import time
 from typing import Dict, List, Optional, Any
-
 import requests
 
-# logging for debug
+# logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -22,12 +19,7 @@ class AdzunaConnector:
 
     BASE_URL = "https://api.adzuna.com/v1/api/jobs"
     
-    def __init__(self, 
-                 app_id: str, 
-                 app_key: str, 
-                 country: str = "us",
-                 max_retries: int = 3, 
-                 retry_delay: int = 5):
+    def __init__(self, app_id: str, app_key: str, country: str = "us",max_retries: int = 3, retry_delay: int = 5):
         self.app_id = app_id
         self.app_key = app_key
         self.country = country.lower()
@@ -49,7 +41,6 @@ class AdzunaConnector:
                 try:
                     jobs = self._fetch_jobs_page(keyword, page, results_per_page)
                     
-                    # Check if we got results
                     if not jobs or not jobs.get('results'):
                         logger.info(f"No more results for keyword '{keyword}' after page {page-1}")
                         break
@@ -57,7 +48,7 @@ class AdzunaConnector:
                     all_jobs.extend(jobs.get('results', []))
                     logger.info(f"Extracted {len(jobs.get('results', []))} jobs from page {page} for keyword '{keyword}'")
                     
-                    # Check if we've reached the last page
+                    # Check if reach the end
                     if page >= jobs.get('count', 0) // results_per_page:
                         break
                         
@@ -69,11 +60,10 @@ class AdzunaConnector:
         logger.info(f"Total jobs extracted from Adzuna: {len(all_jobs)}")
         return all_jobs
     
-    def _fetch_jobs_page(self, 
-                        keyword: str, 
-                        page: int, 
-                        results_per_page: int) -> Dict[str, Any]:
+    def _fetch_jobs_page(self, keyword: str, page: int, results_per_page: int) -> Dict[str, Any]:
+        
         url = f"{self.BASE_URL}/{self.country}/search/{page}"
+        
         params = {
             "app_id": self.app_id,
             "app_key": self.app_key,
@@ -94,8 +84,8 @@ class AdzunaConnector:
                 else:
                     raise
 
-# test
 if __name__ == "__main__":
+    # put api key in environment variable
     app_id = os.environ.get("ADZUNA_APP_ID")
     app_key = os.environ.get("ADZUNA_APP_KEY")
     keywords = ["software engineer", "data scientist", "devops engineer"]
