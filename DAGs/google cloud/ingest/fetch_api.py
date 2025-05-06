@@ -18,9 +18,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Bucket name for storing the job data - I think problem is here!!!!!!!!!!!!!!!!!!!!! + Muse API key missing
-BUCKET_NAME = os.environ.get("GCS_BUCKET_NAME", "job-data-collector")
-
 
 muse_api_key = os.environ.get('MUSE_API_KEY')
 adzuna_api_id = os.environ.get('ADZUNA_APP_ID')
@@ -44,8 +41,7 @@ def upload_to_gcs(data, filename):
 
 
 def collect_jobs(event=None, context=None):
-    """Main function to collect jobs from all sources"""
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+ 
     
     # Adzuna API
     try:
@@ -56,7 +52,7 @@ def collect_jobs(event=None, context=None):
             adzuna = AdzunaConnector(app_id, app_key)
             keywords = ["software","data","devops","engineer","IT","developer","designer","manager"]
             adzuna_jobs = adzuna.extract_jobs(keywords=keywords)
-            upload_to_gcs(adzuna_jobs, f"adzuna_jobs_{timestamp}.json")
+            upload_to_gcs(adzuna_jobs, f"adzuna_jobs.json")
         else:
             logger.error("Missing Adzuna API credentials")
     except Exception as e:
@@ -73,13 +69,13 @@ def collect_jobs(event=None, context=None):
                 locations=["remote"], 
                 limit=100
             )
-            upload_to_gcs(jooble_jobs, f"jooble_jobs_{timestamp}.json")
+            upload_to_gcs(jooble_jobs, f"jooble_jobs.json")
         else:
             logger.error("Missing Jooble API key")
     except Exception as e:
         logger.error(f"Error collecting Jooble jobs: {str(e)}")
     
-    # The Muse API
+    # Muse API
     try:
         muse_api_key = os.environ.get("MUSE_API_KEY")
         
@@ -87,7 +83,7 @@ def collect_jobs(event=None, context=None):
             muse = MuseConnector(muse_api_key)
             categories = ["ux","design","management","ui","product","interaction","engineer"]
             muse_jobs = muse.extract_jobs(categories=categories)
-            upload_to_gcs(muse_jobs, f"muse_jobs_{timestamp}.json")
+            upload_to_gcs(muse_jobs, f"muse_jobs.json")
         else:
             logger.error("Missing Muse API key")
     except Exception as e:
@@ -95,6 +91,6 @@ def collect_jobs(event=None, context=None):
     
     return "Job collection completed"
 
-# This allows running the script locally for testing
+
 if __name__ == "__main__":
     collect_jobs()
