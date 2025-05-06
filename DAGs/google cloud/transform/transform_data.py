@@ -207,7 +207,7 @@ def transform_job_data(input_prefix="", output_prefix="transformed_", bucket_nam
     combined_df = pd.concat(dfs_to_combine, ignore_index=True)
     logger.info(f"Combined {len(combined_df)} total job records")
     
-    destination_blob_name = f"{output_prefix}jobs_data_standardized.json"
+    destination_blob_name = f"{output_prefix}jobs_data_standardized.csv"
     upload_success = upload_to_gcs(combined_df, destination_blob_name, bucket_name)
     
     if upload_success:
