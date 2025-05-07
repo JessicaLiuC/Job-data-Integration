@@ -1,8 +1,12 @@
+"""
+Cloud Run service to transform job data triggered by Pub/Sub messages
+"""
 import os
 import json
 import logging
+import base64
+import flask
 import pandas as pd
-import tempfile
 from google.cloud import storage
 from io import StringIO
 
@@ -16,6 +20,8 @@ logger = logging.getLogger(__name__)
 PROJECT_ID = os.environ.get('PROJECT_ID')
 BUCKET_NAME = f"job-data-{PROJECT_ID}"
 
+app = flask.Flask(__name__)
+
 def download_json_from_gcs(bucket_name, source_blob_name):
     try:
         storage_client = storage.Client()
@@ -27,7 +33,8 @@ def download_json_from_gcs(bucket_name, source_blob_name):
             return pd.DataFrame()
             
         json_content = blob.download_as_text()
-        df = pd.read_json(StringIO(json_content))
+        data = json.loads(json_content)
+        df = pd.DataFrame(data) if isinstance(data, list) else pd.DataFrame([data])
         logger.info(f"Successfully downloaded and parsed {source_blob_name}")
         return df
     except Exception as e:
@@ -58,28 +65,34 @@ def upload_to_gcs(data, destination_blob_name, bucket_name=BUCKET_NAME):
         logger.error(f"Error uploading to GCS: {str(e)}")
         return False
 
-def transform_job_data(input_prefix="", output_prefix="transformed_", bucket_name=BUCKET_NAME):
-    logger.info("Starting job data transformation")
+def transform_job_data(message_data):
+    """Transform job data based on message received from Pub/Sub"""
+    logger.info(f"Starting job data transformation for: {message_data}")
     
-    adzuna_source = f"{input_prefix}adzuna_jobs.json"
-    jooble_source = f"{input_prefix}jooble_jobs.json"
-    muse_source = f"{input_prefix}muse_jobs.json"
+    # Get source info from message
+    api_source = message_data.get('api_source')
+    filename = message_data.get('filename')
+    bucket = message_data.get('bucket', BUCKET_NAME)
     
-    df_adzuna = download_json_from_gcs(bucket_name, adzuna_source)
-    df_jooble = download_json_from_gcs(bucket_name, jooble_source)
-    df_muse = download_json_from_gcs(bucket_name, muse_source)
-    
-    if df_adzuna.empty and df_jooble.empty and df_muse.empty:
-        logger.error("No data found in source files")
+    if not api_source or not filename:
+        logger.error("Invalid message: missing required fields")
         return None
     
-    logger.info(f"Downloaded Adzuna records: {len(df_adzuna)}")
-    logger.info(f"Downloaded Jooble records: {len(df_jooble)}")
-    logger.info(f"Downloaded Muse records: {len(df_muse)}")
+    # Download data
+    df = download_json_from_gcs(bucket, filename)
     
-
+    if df.empty:
+        logger.error(f"No data found in source file: {filename}")
+        return None
+    
+    logger.info(f"Downloaded {len(df)} records from {filename}")
+    
+    # Apply transformations based on source
+    df_standardized = pd.DataFrame()
+    df_standardized['source'] = api_source
+    
     field_mappings = {
-        'df_adzuna': {
+        'adzuna': {
             'job_title': 'title',
             'job_description': 'description',
             'job_url': 'redirect_url',
@@ -87,12 +100,11 @@ def transform_job_data(input_prefix="", output_prefix="transformed_", bucket_nam
             'job_category': 'category.label',
             'job_type': 'contract_time',
             'company_name': 'company.display_name',
-            'salary': 'combined_salary_string',   
+            'salary': 'salary_is_predicted',
             'salary_min': 'salary_min',
-            'salary_max': 'salary_max',
-            'source': 'adzuna' 
+            'salary_max': 'salary_max'
         },
-        'df_jooble': {
+        'jooble': {
             'job_title': 'title',
             'job_description': 'snippet',
             'job_url': 'link',
@@ -100,133 +112,146 @@ def transform_job_data(input_prefix="", output_prefix="transformed_", bucket_nam
             'job_category': 'type',
             'job_type': 'type',
             'company_name': 'company',
-            'salary': 'salary',
-            'source': 'jooble'  
+            'salary': 'salary'
         },
-        'df_muse': {
+        'muse': {
             'job_title': 'name',
             'job_description': 'contents',
             'job_url': 'refs.landing_page',
             'posted_date': 'publication_date',
-            'job_category': 'categories[0].name', 
-            'job_type': '',   
+            'job_category': 'categories[0].name',
+            'job_type': '',
             'company_name': 'company.name',
-            'salary': '',
-            'source': 'muse' 
+            'salary': ''
         }
     }
-
-    df_standardized_adzuna = pd.DataFrame()
-    df_standardized_jooble = pd.DataFrame()
-    df_standardized_muse = pd.DataFrame()
     
-    if not df_adzuna.empty:
-        mapping_adzuna = field_mappings['df_adzuna']
-        df_standardized_adzuna['source'] = 'adzuna'
+    if api_source in field_mappings:
+        mapping = field_mappings[api_source]
         
-        for new_col, original_col in mapping_adzuna.items():
-            if new_col not in ['salary_min', 'salary_max', 'source']:
+        for new_col, original_col in mapping.items():
+            if new_col not in ['salary_min', 'salary_max']:
                 if '.' in original_col:
                     parts = original_col.split('.')
-                    if parts[0] in df_adzuna.columns:
-                        df_standardized_adzuna[new_col] = df_adzuna[parts[0]].apply(
-                            lambda x: x.get(parts[1]) if isinstance(x, dict) and parts[1] in x else None
-                        )
+                    if parts[0] in df.columns:
+                        if parts[0] == 'categories[0]' and 'categories' in df.columns:
+                            df_standardized[new_col] = df['categories'].apply(
+                                lambda x: x[0].get('name') if isinstance(x, list) and len(x) > 0 and 'name' in x[0] else None
+                            )
+                        elif parts[0] == 'refs' and 'refs' in df.columns:
+                            df_standardized[new_col] = df['refs'].apply(
+                                lambda x: x.get('landing_page') if isinstance(x, dict) and 'landing_page' in x else None
+                            )
+                        else:
+                            df_standardized[new_col] = df[parts[0]].apply(
+                                lambda x: x.get(parts[1]) if isinstance(x, dict) and parts[1] in x else None
+                            )
+                elif original_col in df.columns:
+                    df_standardized[new_col] = df[original_col]
                 else:
-                    if original_col in df_adzuna.columns:
-                        df_standardized_adzuna[new_col] = df_adzuna[original_col]
-                    else:
-                        df_standardized_adzuna[new_col] = None
+                    df_standardized[new_col] = None
         
-        # Handle salary separately
-        if 'salary_min' in mapping_adzuna and 'salary_max' in mapping_adzuna:
-            min_col = mapping_adzuna['salary_min']
-            max_col = mapping_adzuna['salary_max']
+        # Handle Adzuna salary separately
+        if api_source == 'adzuna' and 'salary_min' in mapping and 'salary_max' in mapping:
+            min_col = mapping['salary_min']
+            max_col = mapping['salary_max']
 
-            if min_col in df_adzuna.columns and max_col in df_adzuna.columns:
-                df_standardized_adzuna['salary'] = df_adzuna[min_col].apply(lambda x: f"${x}" if pd.notna(x) else "").astype(str) + \
-                                                ' - ' + \
-                                                df_adzuna[max_col].apply(lambda x: f"${x}" if pd.notna(x) else "").astype(str)
-                df_standardized_adzuna['salary'] = df_standardized_adzuna['salary'].str.replace('$ - $', '', regex=False)
-                df_standardized_adzuna['salary'] = df_standardized_adzuna['salary'].str.replace('$nan', '', regex=False)
-                df_standardized_adzuna['salary'] = df_standardized_adzuna['salary'].str.replace('nan$', '', regex=False)
-                df_standardized_adzuna['salary'] = df_standardized_adzuna['salary'].str.replace(' - ', '', regex=False)
-            else:
-                df_standardized_adzuna['salary'] = None
-    
-    if not df_jooble.empty:
-        mapping_jooble = field_mappings['df_jooble']
-        df_standardized_jooble['source'] = 'jooble'
+            if min_col in df.columns and max_col in df.columns:
+                df_standardized['salary'] = df[min_col].apply(lambda x: f"${x}" if pd.notna(x) else "").astype(str) + \
+                                        ' - ' + \
+                                        df[max_col].apply(lambda x: f"${x}" if pd.notna(x) else "").astype(str)
+                df_standardized['salary'] = df_standardized['salary'].str.replace('$ - $', '', regex=False)
+                df_standardized['salary'] = df_standardized['salary'].str.replace('$nan', '', regex=False)
+                df_standardized['salary'] = df_standardized['salary'].str.replace('nan$', '', regex=False)
+                df_standardized['salary'] = df_standardized['salary'].str.replace(' - ', '', regex=False)
         
-        for new_col, original_col in mapping_jooble.items():
-            if new_col != 'source':  
-                if original_col in df_jooble.columns:
-                    df_standardized_jooble[new_col] = df_jooble[original_col]
-                else:
-                    df_standardized_jooble[new_col] = None
-    
-    if not df_muse.empty:
-        mapping_muse = field_mappings['df_muse']
-        df_standardized_muse['source'] = 'muse'
+        # Save transformed data
+        output_filename = f"transformed_{api_source}_jobs.json"
+        upload_success = upload_to_gcs(df_standardized, output_filename, bucket)
         
-        for new_col, original_col in mapping_muse.items():
-            if new_col != 'source':  
-                if '.' in original_col:
-                    parts = original_col.split('.')
-                    if parts[0] in df_muse.columns:
-                        df_standardized_muse[new_col] = df_muse[parts[0]].apply(
-                            lambda x: x.get(parts[1]) if isinstance(x, dict) and parts[1] in x else None
-                        )
-                    elif parts[0] == 'categories[0]' and 'categories' in df_muse.columns:
-                        df_standardized_muse[new_col] = df_muse['categories'].apply(
-                            lambda x: x[0].get('name') if isinstance(x, list) and len(x) > 0 and 'name' in x[0] else None
-                        )
-                    elif parts[0] == 'refs' and 'refs' in df_muse.columns:
-                        df_standardized_muse[new_col] = df_muse['refs'].apply(
-                            lambda x: x.get('landing_page') if isinstance(x, dict) and 'landing_page' in x else None
-                        )
-                else:
-                    if original_col in df_muse.columns:
-                        df_standardized_muse[new_col] = df_muse[original_col]
-                    else:
-                        df_standardized_muse[new_col] = None
-    
-
-    dfs_to_combine = []
-    if not df_standardized_adzuna.empty:
-        dfs_to_combine.append(df_standardized_adzuna)
-    if not df_standardized_jooble.empty:
-        dfs_to_combine.append(df_standardized_jooble)
-    if not df_standardized_muse.empty:
-        dfs_to_combine.append(df_standardized_muse)
-    
-    if not dfs_to_combine:
-        logger.error("No data to combine after transformations")
-        return None
-    
-    combined_df = pd.concat(dfs_to_combine, ignore_index=True)
-    logger.info(f"Combined {len(combined_df)} total job records")
-    
-    destination_blob_name = f"{output_prefix}jobs_data_standardized.csv"
-    upload_success = upload_to_gcs(combined_df, destination_blob_name, bucket_name)
-    
-    if upload_success:
-        logger.info(f"Job data transformation complete. Result saved to {destination_blob_name}")
-        return combined_df
-    else:
-        logger.error("Failed to upload transformed data")
-        return None
-
-def clean_jobs(event=None, context=None):
-    try:
-        result = transform_job_data()
-        if result is not None:
-            return "Job data cleaning and transformation completed successfully"
+        if upload_success:
+            logger.info(f"Transformation complete for {api_source}. Result saved to {output_filename}")
+            return df_standardized
         else:
-            return "Job data cleaning and transformation failed"
+            logger.error(f"Failed to upload transformed data for {api_source}")
+            return None
+    else:
+        logger.error(f"Unknown API source: {api_source}")
+        return None
+
+@app.route('/', methods=['GET'])
+def home():
+    """Simple status endpoint for the service"""
+    return {'status': 'Job transform service is running'}, 200
+
+@app.route('/pubsub', methods=['POST'])
+def pubsub_handler():
+    """Endpoint to receive Pub/Sub push messages"""
+    try:
+        # Process the Pub/Sub message
+        envelope = flask.request.get_json()
+        
+        if not envelope:
+            return "No Pub/Sub message received", 400
+            
+        if not isinstance(envelope, dict) or 'message' not in envelope:
+            return "Invalid Pub/Sub message format", 400
+            
+        # Extract the message data
+        pubsub_message = envelope['message']
+        
+        if 'data' in pubsub_message:
+            message_data_str = base64.b64decode(pubsub_message['data']).decode('utf-8')
+            message_data = json.loads(message_data_str)
+            
+            # Transform the data
+            result = transform_job_data(message_data)
+            
+            if result is not None:
+                return {
+                    'status': 'success',
+                    'message': f"Successfully transformed job data for {message_data.get('api_source')}"
+                }, 200
+            else:
+                return {
+                    'status': 'error',
+                    'message': f"Failed to transform job data for {message_data.get('api_source')}"
+                }, 500
+        else:
+            logger.error("Invalid Pub/Sub message: missing data")
+            return "Invalid message format", 400
     except Exception as e:
-        logger.error(f"Error in clean_jobs: {str(e)}")
-        raise
+        logger.error(f"Error processing Pub/Sub message: {str(e)}")
+        return f"Error: {str(e)}", 500
+
+@app.route('/manual', methods=['POST'])
+def manual_transform():
+    """Endpoint to manually trigger a transformation with provided data"""
+    try:
+        # Get the transformation data from the request
+        message_data = flask.request.get_json()
+        
+        if not message_data:
+            return "No data provided", 400
+            
+        # Transform the data
+        result = transform_job_data(message_data)
+        
+        if result is not None:
+            return {
+                'status': 'success',
+                'message': f"Successfully transformed job data for {message_data.get('api_source')}"
+            }, 200
+        else:
+            return {
+                'status': 'error',
+                'message': f"Failed to transform job data for {message_data.get('api_source')}"
+            }, 500
+    except Exception as e:
+        logger.error(f"Error in manual transform: {str(e)}")
+        return f"Error: {str(e)}", 500
 
 if __name__ == "__main__":
-    clean_jobs()
+    # For local development
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port, debug=False)
