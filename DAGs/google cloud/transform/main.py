@@ -1,21 +1,9 @@
-"""
-Cloud Run service to transform job data triggered by Pub/Sub messages
-"""
 import os
 import json
-import logging
 import base64
 import flask
 import pandas as pd
 from google.cloud import storage
-from io import StringIO
-
-# logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
 
 PROJECT_ID = os.environ.get('PROJECT_ID')
 BUCKET_NAME = f"job-data-{PROJECT_ID}"
@@ -29,16 +17,17 @@ def download_json_from_gcs(bucket_name, source_blob_name):
         blob = bucket.blob(source_blob_name)
         
         if not blob.exists():
-            logger.error(f"File {source_blob_name} not found in bucket {bucket_name}")
+            print(f"File {source_blob_name} not found in bucket {bucket_name}")
             return pd.DataFrame()
             
         json_content = blob.download_as_text()
         data = json.loads(json_content)
         df = pd.DataFrame(data) if isinstance(data, list) else pd.DataFrame([data])
-        logger.info(f"Successfully downloaded and parsed {source_blob_name}")
+        print(f"Successfully downloaded and parsed {source_blob_name}")
         return df
+    
     except Exception as e:
-        logger.error(f"Error downloading {source_blob_name}: {str(e)}")
+        print(f"Error downloading {source_blob_name}: {str(e)}")
         return pd.DataFrame()
 
 def upload_to_gcs(data, destination_blob_name, bucket_name=BUCKET_NAME):
@@ -53,41 +42,37 @@ def upload_to_gcs(data, destination_blob_name, bucket_name=BUCKET_NAME):
         else:
             blob.upload_from_string(data, content_type="application/json")
 
-        logger.info(f"File {destination_blob_name} uploaded to {bucket_name}")
+        print(f"File {destination_blob_name} uploaded to {bucket_name}")
         
         if blob.exists():
-            logger.info(f"Verified upload of {destination_blob_name}")
+            print(f"Verified upload of {destination_blob_name}")
             return True
         else:
-            logger.error(f"Upload verification failed for {destination_blob_name}")
+            print(f"Upload verification failed for {destination_blob_name}")
             return False
     except Exception as e:
-        logger.error(f"Error uploading to GCS: {str(e)}")
+        print(f"Error uploading to GCS: {str(e)}")
         return False
 
 def transform_job_data(message_data):
-    """Transform job data based on message received from Pub/Sub"""
-    logger.info(f"Starting job data transformation for: {message_data}")
-    
-    # Get source info from message
+    print(f"Starting job data transformation for: {message_data}")
+
     api_source = message_data.get('api_source')
     filename = message_data.get('filename')
     bucket = message_data.get('bucket', BUCKET_NAME)
     
     if not api_source or not filename:
-        logger.error("Invalid message: missing required fields")
+        print("Invalid message: missing required fields")
         return None
     
-    # Download data
     df = download_json_from_gcs(bucket, filename)
     
     if df.empty:
-        logger.error(f"No data found in source file: {filename}")
+        print(f"No data found in source file: {filename}")
         return None
     
-    logger.info(f"Downloaded {len(df)} records from {filename}")
+    print(f"Downloaded {len(df)} records from {filename}")
     
-    # Apply transformations based on source
     df_standardized = pd.DataFrame()
     df_standardized['source'] = api_source
     
@@ -164,31 +149,27 @@ def transform_job_data(message_data):
                 df_standardized['salary'] = df_standardized['salary'].str.replace('$nan', '', regex=False)
                 df_standardized['salary'] = df_standardized['salary'].str.replace('nan$', '', regex=False)
                 df_standardized['salary'] = df_standardized['salary'].str.replace(' - ', '', regex=False)
-        
-        # Save transformed data
+
         output_filename = f"transformed_{api_source}_jobs.json"
         upload_success = upload_to_gcs(df_standardized, output_filename, bucket)
         
         if upload_success:
-            logger.info(f"Transformation complete for {api_source}. Result saved to {output_filename}")
+            print(f"Transformation complete for {api_source}. Result saved to {output_filename}")
             return df_standardized
         else:
-            logger.error(f"Failed to upload transformed data for {api_source}")
+            print(f"Failed to upload transformed data for {api_source}")
             return None
     else:
-        logger.error(f"Unknown API source: {api_source}")
+        print(f"Unknown API source: {api_source}")
         return None
 
 @app.route('/', methods=['GET'])
 def home():
-    """Simple status endpoint for the service"""
     return {'status': 'Job transform service is running'}, 200
 
 @app.route('/pubsub', methods=['POST'])
 def pubsub_handler():
-    """Endpoint to receive Pub/Sub push messages"""
     try:
-        # Process the Pub/Sub message
         envelope = flask.request.get_json()
         
         if not envelope:
@@ -197,14 +178,12 @@ def pubsub_handler():
         if not isinstance(envelope, dict) or 'message' not in envelope:
             return "Invalid Pub/Sub message format", 400
             
-        # Extract the message data
         pubsub_message = envelope['message']
         
         if 'data' in pubsub_message:
             message_data_str = base64.b64decode(pubsub_message['data']).decode('utf-8')
             message_data = json.loads(message_data_str)
             
-            # Transform the data
             result = transform_job_data(message_data)
             
             if result is not None:
@@ -218,23 +197,20 @@ def pubsub_handler():
                     'message': f"Failed to transform job data for {message_data.get('api_source')}"
                 }, 500
         else:
-            logger.error("Invalid Pub/Sub message: missing data")
+            print("Invalid Pub/Sub message: missing data")
             return "Invalid message format", 400
     except Exception as e:
-        logger.error(f"Error processing Pub/Sub message: {str(e)}")
+        print(f"Error processing Pub/Sub message: {str(e)}")
         return f"Error: {str(e)}", 500
 
 @app.route('/manual', methods=['POST'])
 def manual_transform():
-    """Endpoint to manually trigger a transformation with provided data"""
     try:
-        # Get the transformation data from the request
         message_data = flask.request.get_json()
         
         if not message_data:
             return "No data provided", 400
             
-        # Transform the data
         result = transform_job_data(message_data)
         
         if result is not None:
@@ -248,10 +224,9 @@ def manual_transform():
                 'message': f"Failed to transform job data for {message_data.get('api_source')}"
             }, 500
     except Exception as e:
-        logger.error(f"Error in manual transform: {str(e)}")
+        print(f"Error in manual transform: {str(e)}")
         return f"Error: {str(e)}", 500
 
 if __name__ == "__main__":
-    # For local development
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=False)

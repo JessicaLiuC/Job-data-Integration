@@ -1,9 +1,5 @@
-"""
-Cloud Run service to collect job data from multiple APIs and publish to Pub/Sub
-"""
 import os
 import json
-import logging
 import datetime
 import flask
 from google.cloud import storage
@@ -11,14 +7,6 @@ from google.cloud import pubsub_v1
 from muse_api import MuseConnector
 from adzuna_api import AdzunaConnector
 from jooble_api import JoobleConnector
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
-
 
 muse_api_key = os.environ.get('MUSE_API_KEY')
 adzuna_api_id = os.environ.get('ADZUNA_APP_ID')
@@ -31,25 +19,21 @@ JOBS_TOPIC = 'jobs-data-topic'
 app = flask.Flask(__name__)
 
 def upload_to_gcs(data, filename):
-    """Upload data to Google Cloud Storage"""
     try:
         storage_client = storage.Client()
         bucket = storage_client.get_bucket(BUCKET_NAME)
         blob = bucket.blob(filename)
         blob.upload_from_string(json.dumps(data, indent=2), content_type="application/json")
-        logger.info(f"File {filename} uploaded to {BUCKET_NAME}")
+        print(f"File {filename} uploaded to {BUCKET_NAME}")
         return True
     except Exception as e:
-        logger.error(f"Error uploading to GCS: {str(e)}")
+        print(f"Error uploading to GCS: {str(e)}")
         return False
 
 def publish_to_pubsub(api_name, data, timestamp):
-    """Upload data to GCS and publish a message to Pub/Sub"""
     filename = f"{api_name}_jobs.json"
-    
-    # Upload data to GCS
+
     if upload_to_gcs(data, filename):
-        # Prepare message data
         message_data = {
             "api_source": api_name,
             "filename": filename,
@@ -57,30 +41,24 @@ def publish_to_pubsub(api_name, data, timestamp):
             "timestamp": timestamp,
             "bucket": BUCKET_NAME
         }
-        
-        # Publish message to Pub/Sub
+
         try:
             publisher = pubsub_v1.PublisherClient()
             topic_path = publisher.topic_path(PROJECT_ID, JOBS_TOPIC)
-            
-            # Convert dict to JSON string
             data_bytes = json.dumps(message_data).encode("utf-8")
-            
-            # Publish message
             future = publisher.publish(topic_path, data_bytes)
             message_id = future.result()
-            
-            logger.info(f"Published message {message_id} for {api_name} job data")
+            print(f"Published message {message_id} for {api_name} job data")
             return True
         except Exception as e:
-            logger.error(f"Error publishing message for {api_name}: {str(e)}")
+            print(f"Error publishing message for {api_name}: {str(e)}")
             return False
+        
     else:
-        logger.error(f"Failed to upload {api_name} data to GCS")
+        print(f"Failed to upload {api_name} data to GCS")
         return False
 
 def collect_jobs():
-    """Collect jobs from multiple APIs and publish to Pub/Sub"""
     timestamp = datetime.datetime.now().isoformat()
     results = {
         "success": 0,
@@ -101,9 +79,9 @@ def collect_jobs():
                 results["success"] += 1
                 results["apis_processed"].append("adzuna")
         else:
-            logger.error("Missing Adzuna API credentials")
+            print("Missing Adzuna API credentials")
     except Exception as e:
-        logger.error(f"Error collecting Adzuna jobs: {str(e)}")
+        print(f"Error collecting Adzuna jobs: {str(e)}")
     
     # Jooble API
     try:
@@ -120,9 +98,9 @@ def collect_jobs():
                 results["success"] += 1
                 results["apis_processed"].append("jooble")
         else:
-            logger.error("Missing Jooble API key")
+            print("Missing Jooble API key")
     except Exception as e:
-        logger.error(f"Error collecting Jooble jobs: {str(e)}")
+        print(f"Error collecting Jooble jobs: {str(e)}")
     
     # Muse API
     try:
@@ -136,20 +114,18 @@ def collect_jobs():
                 results["success"] += 1
                 results["apis_processed"].append("muse")
         else:
-            logger.error("Missing Muse API key")
+            print("Missing Muse API key")
     except Exception as e:
-        logger.error(f"Error collecting Muse jobs: {str(e)}")
+        print(f"Error collecting Muse jobs: {str(e)}")
     
     return results
 
 @app.route('/', methods=['GET'])
 def home():
-    """Simple status endpoint for the service"""
     return {'status': 'Job fetch service is running'}, 200
 
 @app.route('/fetch', methods=['POST'])
 def fetch_handler():
-    """HTTP endpoint to trigger job fetching"""
     try:
         results = collect_jobs()
         return {
@@ -158,7 +134,7 @@ def fetch_handler():
             'details': results
         }, 200
     except Exception as e:
-        logger.error(f"Error in fetch_handler: {str(e)}")
+        print(f"Error in fetch_handler: {str(e)}")
         return {
             'status': 'error',
             'message': str(e)
@@ -166,33 +142,25 @@ def fetch_handler():
 
 @app.route('/pubsub', methods=['POST'])
 def pubsub_handler():
-    """Endpoint to receive Pub/Sub push messages (for scheduled execution)"""
     try:
-        # Process the Pub/Sub message
         envelope = flask.request.get_json()
-        
         if not envelope:
             return "No Pub/Sub message received", 400
-            
         if not isinstance(envelope, dict) or 'message' not in envelope:
             return "Invalid Pub/Sub message format", 400
-            
-        # Acknowledge the message and trigger job collection
         results = collect_jobs()
-        
         return {
             'status': 'success',
             'message': f"Job collection completed. Successfully published {results['success']} out of {results['total']} APIs.",
             'details': results
         }, 200
     except Exception as e:
-        logger.error(f"Error in pubsub_handler: {str(e)}")
+        print(f"Error in pubsub_handler: {str(e)}")
         return {
             'status': 'error',
             'message': str(e)
         }, 500
 
 if __name__ == "__main__":
-    # For local development
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port, debug=False)
