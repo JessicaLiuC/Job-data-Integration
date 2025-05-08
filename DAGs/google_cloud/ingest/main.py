@@ -67,12 +67,9 @@ def collect_jobs():
     }
     
     # Adzuna API
-    try:
-        app_id = os.environ.get("ADZUNA_APP_ID")
-        app_key = os.environ.get("ADZUNA_APP_KEY")
-        
-        if app_id and app_key:
-            adzuna = AdzunaConnector(app_id, app_key)
+    try: 
+        if adzuna_api_id and adzuna_api_key:
+            adzuna = AdzunaConnector(adzuna_api_id, adzuna_api_key)
             keywords = ["software", "data", "devops", "engineer", "IT", "developer", "designer", "manager"]
             adzuna_jobs = adzuna.extract_jobs(keywords=keywords)
             if publish_to_pubsub("adzuna", adzuna_jobs, timestamp):
@@ -85,8 +82,6 @@ def collect_jobs():
     
     # Jooble API
     try:
-        jooble_api_key = os.environ.get("JOOBLE_API_KEY")
-        
         if jooble_api_key:
             jooble = JoobleConnector(jooble_api_key)
             jooble_jobs = jooble.extract_jobs(
@@ -104,8 +99,6 @@ def collect_jobs():
     
     # Muse API
     try:
-        muse_api_key = os.environ.get("MUSE_API_KEY")
-        
         if muse_api_key:
             muse = MuseConnector(muse_api_key)
             categories = ["ux", "design", "management", "ui", "product", "interaction", "engineer"]
