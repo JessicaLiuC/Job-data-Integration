@@ -4,6 +4,7 @@ import base64
 import flask
 import pandas as pd
 from google.cloud import storage
+from google.cloud import bigquery
 
 PROJECT_ID = os.environ.get('PROJECT_ID')
 BUCKET_NAME = f"job-data-{PROJECT_ID}"
@@ -155,6 +156,11 @@ def transform_job_data(message_data):
         
         if upload_success:
             print(f"Transformation complete for {api_source}. Result saved to {output_filename}")
+            bigquery_success = load_to_bigquery(df_standardized)
+            if bigquery_success:
+                print(f"Successfully loaded {api_source} data to BigQuery")
+            else:
+                print(f"Failed to load {api_source} data to BigQuery")
             return df_standardized
         else:
             print(f"Failed to upload transformed data for {api_source}")
@@ -162,6 +168,36 @@ def transform_job_data(message_data):
     else:
         print(f"Unknown API source: {api_source}")
         return None
+    
+def load_to_bigquery(df, dataset_id='job_data', table_id='standardized_jobs'):
+    try:
+        client = bigquery.Client()
+        table_ref = f"{client.project}.{dataset_id}.{table_id}"
+        
+        job_config = bigquery.LoadJobConfig(
+            write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
+            schema=[
+                bigquery.SchemaField("job_title", "STRING"),
+                bigquery.SchemaField("job_description", "STRING"),
+                bigquery.SchemaField("job_url", "STRING"),
+                bigquery.SchemaField("posted_date", "STRING"),
+                bigquery.SchemaField("job_category", "STRING"),
+                bigquery.SchemaField("job_type", "STRING"),
+                bigquery.SchemaField("company_name", "STRING"),
+                bigquery.SchemaField("salary", "STRING"),
+                bigquery.SchemaField("source", "STRING"),
+            ]
+        )
+        
+        job = client.load_table_from_dataframe(
+            df, table_ref, job_config=job_config
+        )
+        job.result() 
+        print(f"Loaded {len(df)} rows into BigQuery table {table_ref}")
+        return True
+    except Exception as e:
+        print(f"Error loading data to BigQuery: {str(e)}")
+        return False
 
 @app.route('/', methods=['GET'])
 def home():
