@@ -1,7 +1,7 @@
-flask==2.3.3
-gunicorn==21.2.0
-requests==2.30.0
-google-cloud-storage==2.10.0
-google-cloud-pubsub==2.17.0
-google-cloud-bigquery==3.11.0
-pandas==2.0.1
+flask
+gunicorn
+requests
+google-cloud-storage
+google-cloud-pubsub
+google-cloud-bigquery
+pandas
