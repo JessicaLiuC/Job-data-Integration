@@ -81,21 +81,21 @@ def collect_jobs():
         print(f"Error collecting Adzuna jobs: {str(e)}")
     
     # Jooble API
-    try:
-        if jooble_api_key:
-            jooble = JoobleConnector(jooble_api_key)
-            jooble_jobs = jooble.extract_jobs(
-                keywords=["engineer", "designer"], 
-                locations=["remote"], 
-                limit=100
-            )
-            if publish_to_pubsub("jooble", jooble_jobs, timestamp):
-                results["success"] += 1
-                results["apis_processed"].append("jooble")
-        else:
-            print("Missing Jooble API key")
-    except Exception as e:
-        print(f"Error collecting Jooble jobs: {str(e)}")
+    # try:
+    #     if jooble_api_key:
+    #         jooble = JoobleConnector(jooble_api_key)
+    #         jooble_jobs = jooble.extract_jobs(
+    #             keywords=["engineer", "designer"], 
+    #             locations=["remote"], 
+    #             limit=100
+    #         )
+    #         if publish_to_pubsub("jooble", jooble_jobs, timestamp):
+    #             results["success"] += 1
+    #             results["apis_processed"].append("jooble")
+    #     else:
+    #         print("Missing Jooble API key")
+    # except Exception as e:
+    #     print(f"Error collecting Jooble jobs: {str(e)}")
     
     # Muse API
     try:
