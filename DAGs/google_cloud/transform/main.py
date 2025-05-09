@@ -233,25 +233,29 @@ def pubsub_handler():
                 decoded_bytes = base64.b64decode(pubsub_message['data'])
                 logger.info(f"Decoded bytes (hex): {decoded_bytes.hex()}")
 
-                try:
-                    message_data_str = decoded_bytes.decode('utf-8')
-                    logger.info(f"Decoded as UTF-8: {message_data_str}")
-                except UnicodeDecodeError as e:
-                    logger.info(f"UTF-8 decoding error: {str(e)}")
-                    message_data_str = decoded_bytes.decode('latin-1')
-                    logger.info(f"Decoded as Latin-1: {message_data_str}")
+                # try:
+                #     message_data_str = decoded_bytes.decode('utf-8')
+                #     logger.info(f"Decoded as UTF-8: {message_data_str}")
+                # except UnicodeDecodeError as e:
+                #     logger.info(f"UTF-8 decoding error: {str(e)}")
+                #     message_data_str = decoded_bytes.decode('latin-1')
+                #     logger.info(f"Decoded as Latin-1: {message_data_str}")
 
-                if not message_data_str.strip():
-                    return "Empty message data after decoding", 400
+                # if not message_data_str.strip():
+                #     return "Empty message data after decoding", 400
                 
+                # try:
+                #     message_data = json.loads(message_data_str)
+                #     logger.info(f"Parsed JSON: {message_data}")
+                # except json.JSONDecodeError as json_err:
+                #     logger.info(f"JSON parsing error: {str(json_err)}")
+                #     logger.info(f"First 100 chars of message_data_str: {message_data_str[:100]}")
+                #     return f"Invalid JSON after decoding: {str(json_err)}", 400
                 try:
-                    message_data = json.loads(message_data_str)
-                    logger.info(f"Parsed JSON: {message_data}")
-                except json.JSONDecodeError as json_err:
-                    logger.info(f"JSON parsing error: {str(json_err)}")
-                    logger.info(f"First 100 chars of message_data_str: {message_data_str[:100]}")
-                    return f"Invalid JSON after decoding: {str(json_err)}", 400
-                
+                    message_data = json.loads(decoded_bytes)
+                except:
+                    logger.info(f"Error decoding message data: {decoded_bytes}")
+                    return "Invalid message data", 400
                 result = transform_job_data(message_data)
                 
                 if result is not None:
