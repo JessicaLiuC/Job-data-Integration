@@ -50,6 +50,7 @@ def publish_to_pubsub(api_name, data, timestamp):
             future = publisher.publish(topic_path, data_bytes)
             message_id = future.result()
             print(f"Published message {message_id} for {api_name} job data")
+            print(f"Message data for {api_name}: {message_data}")
             return True
         except Exception as e:
             print(f"Error publishing message for {api_name}: {str(e)}")
