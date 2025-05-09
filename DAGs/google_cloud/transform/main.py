@@ -226,7 +226,6 @@ def pubsub_handler():
                 print(f"Decoded bytes (hex): {decoded_bytes.hex()}")
 
                 try:
-                    message_data = json.loads(message_data_str)
                     message_data_str = decoded_bytes.decode('utf-8')
                     print(f"Decoded as UTF-8: {message_data_str}")
                 except UnicodeDecodeError as e:
