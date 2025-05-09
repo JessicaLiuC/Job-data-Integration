@@ -1,7 +1,7 @@
 import os
 import json
 import base64
-import flask
+from flask import Flask, request
 import logging
 import pandas as pd
 from google.cloud import storage
@@ -17,7 +17,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = flask.Flask(__name__)
+app = Flask(__name__)
 
 def download_json_from_gcs(bucket_name, source_blob_name):
     try:
@@ -214,7 +214,7 @@ def home():
 @app.route('/pubsub', methods=['POST'])
 def pubsub_handler():
     try:
-        envelope = flask.request.get_json()
+        envelope = request.get_json()
         logger.info(f"Received Pub/Sub message: {envelope}")
         
         if not envelope:
