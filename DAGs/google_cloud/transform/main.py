@@ -217,7 +217,7 @@ def pubsub_handler():
         pubsub_message = envelope['message']
         
         if 'data' in pubsub_message:
-            message_data_str = base64.b64decode(pubsub_message['data']).decode('utf-8')
+            message_data_str = base64.b64decode(pubsub_message['data']).decode('latin-1') 
             message_data = json.loads(message_data_str)
             
             result = transform_job_data(message_data)
