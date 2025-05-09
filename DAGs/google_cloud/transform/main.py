@@ -281,7 +281,7 @@ def pubsub_handler():
 @app.route('/manual', methods=['POST'])
 def manual_transform():
     try:
-        message_data = flask.request.get_json()
+        message_data = request.get_json()
         
         if not message_data:
             return "No data provided", 400

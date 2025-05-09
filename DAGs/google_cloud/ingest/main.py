@@ -34,12 +34,20 @@ def publish_to_pubsub(api_name, data, timestamp):
     filename = f"{api_name}_jobs.json"
 
     if upload_to_gcs(data, filename):
-        message = "New job data available. Ready to transform."
+        message_data = {
+            "api_source": api_name,
+            "filename": filename,
+            "record_count": len(data),
+            "timestamp": timestamp,
+            "bucket": BUCKET_NAME
+        }
 
         try:
             publisher = pubsub_v1.PublisherClient()
             topic_path = publisher.topic_path(PROJECT_ID, JOBS_TOPIC)
-            future = publisher.publish(topic_path, message.encode('utf-8'))
+            data_bytes = json.dumps(message_data).encode("utf-8")
+
+            future = publisher.publish(topic_path, data_bytes)
             message_id = future.result()
             print(f"Published message {message_id} for {api_name} job data")
             return True
