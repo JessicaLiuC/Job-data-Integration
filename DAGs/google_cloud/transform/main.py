@@ -83,7 +83,6 @@ def transform_job_data(message_data):
     print(f"Downloaded {len(df)} records from {filename}")
     
     df_standardized = pd.DataFrame()
-    df_standardized['source'] = api_source
     
     field_mappings = {
         'adzuna': {
@@ -128,17 +127,17 @@ def transform_job_data(message_data):
                 if '.' in original_col:
                     parts = original_col.split('.')
                     if parts[0] in df.columns:
-                        if parts[0] == 'categories[0]' and 'categories' in df.columns:
-                            df_standardized[new_col] = df['categories'].apply(
-                                lambda x: x[0].get('name') if isinstance(x, list) and len(x) > 0 and 'name' in x[0] else None
-                            )
-                        elif parts[0] == 'refs' and 'refs' in df.columns:
+                        if parts[0] == 'refs' and 'refs' in df.columns:
                             df_standardized[new_col] = df['refs'].apply(
                                 lambda x: x.get('landing_page') if isinstance(x, dict) and 'landing_page' in x else None
                             )
                         else:
                             df_standardized[new_col] = df[parts[0]].apply(
                                 lambda x: x.get(parts[1]) if isinstance(x, dict) and parts[1] in x else None
+                            )
+                    elif parts[0] == 'categories[0]' and 'categories' in df.columns:
+                            df_standardized[new_col] = df['categories'].apply(
+                                lambda x: x[0].get('name') if isinstance(x, list) and len(x) > 0 and 'name' in x[0] else None
                             )
                 elif original_col in df.columns:
                     df_standardized[new_col] = df[original_col]
@@ -158,6 +157,7 @@ def transform_job_data(message_data):
                 df_standardized['salary'] = df_standardized['salary'].str.replace('$nan', '', regex=False)
                 df_standardized['salary'] = df_standardized['salary'].str.replace('nan$', '', regex=False)
 
+        df_standardized['source'] = api_source
         output_filename = f"transformed_{api_source}_jobs.json"
         upload_success = upload_to_gcs(df_standardized, output_filename, bucket)
         
