@@ -157,7 +157,6 @@ def transform_job_data(message_data):
                 df_standardized['salary'] = df_standardized['salary'].str.replace('$ - $', '', regex=False)
                 df_standardized['salary'] = df_standardized['salary'].str.replace('$nan', '', regex=False)
                 df_standardized['salary'] = df_standardized['salary'].str.replace('nan$', '', regex=False)
-                df_standardized['salary'] = df_standardized['salary'].str.replace(' - ', '', regex=False)
 
         output_filename = f"transformed_{api_source}_jobs.json"
         upload_success = upload_to_gcs(df_standardized, output_filename, bucket)
