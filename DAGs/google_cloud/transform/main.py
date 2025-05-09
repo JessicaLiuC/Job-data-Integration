@@ -222,7 +222,7 @@ def pubsub_handler():
             try:
                 print(f'Raw data: {pubsub_message["data"]}')
 
-                decoded_bytes = base64.b64decode(pubsub_message['data']).decode('latin-1') 
+                decoded_bytes = base64.b64decode(pubsub_message['data'])
                 print(f"Decoded bytes (hex): {decoded_bytes.hex()}")
 
                 try:
