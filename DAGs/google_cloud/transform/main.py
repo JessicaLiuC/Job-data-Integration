@@ -207,6 +207,7 @@ def home():
 def pubsub_handler():
     try:
         envelope = flask.request.get_json()
+        print(f"Received Pub/Sub message: {envelope}")
         
         if not envelope:
             return "No Pub/Sub message received", 400
@@ -215,23 +216,50 @@ def pubsub_handler():
             return "Invalid Pub/Sub message format", 400
             
         pubsub_message = envelope['message']
+        print(f'Extracted message: {pubsub_message}')
         
         if 'data' in pubsub_message:
-            message_data_str = base64.b64decode(pubsub_message['data']).decode('latin-1') 
-            message_data = json.loads(message_data_str)
-            
-            result = transform_job_data(message_data)
-            
-            if result is not None:
-                return {
-                    'status': 'success',
-                    'message': f"Successfully transformed job data for {message_data.get('api_source')}"
-                }, 200
-            else:
-                return {
-                    'status': 'error',
-                    'message': f"Failed to transform job data for {message_data.get('api_source')}"
-                }, 500
+            try:
+                print(f'Raw data: {pubsub_message["data"]}')
+
+                decoded_bytes = base64.b64decode(pubsub_message['data']).decode('latin-1') 
+                print(f"Decoded bytes (hex): {decoded_bytes.hex()}")
+
+                try:
+                    message_data = json.loads(message_data_str)
+                    message_data_str = decoded_bytes.decode('utf-8')
+                    print(f"Decoded as UTF-8: {message_data_str}")
+                except UnicodeDecodeError as e:
+                    print(f"UTF-8 decoding error: {str(e)}")
+                    message_data_str = decoded_bytes.decode('latin-1')
+                    print(f"Decoded as Latin-1: {message_data_str}")
+
+                if not message_data_str.strip():
+                    return "Empty message data after decoding", 400
+                
+                try:
+                    message_data = json.loads(message_data_str)
+                    print(f"Parsed JSON: {message_data}")
+                except json.JSONDecodeError as json_err:
+                    print(f"JSON parsing error: {str(json_err)}")
+                    print(f"First 100 chars of message_data_str: {message_data_str[:100]}")
+                    return f"Invalid JSON after decoding: {str(json_err)}", 400
+                
+                result = transform_job_data(message_data)
+                
+                if result is not None:
+                    return {
+                        'status': 'success',
+                        'message': f"Successfully transformed job data for {message_data.get('api_source')}"
+                    }, 200
+                else:
+                    return {
+                        'status': 'error',
+                        'message': f"Failed to transform job data for {message_data.get('api_source')}"
+                    }, 500
+            except Exception as e:
+                print(f"Error processing message data: {str(e)}")
+                return f"Error processing message data: {str(e)}", 400
         else:
             print("Invalid Pub/Sub message: missing data")
             return "Invalid message format", 400
