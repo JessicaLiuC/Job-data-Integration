@@ -51,7 +51,7 @@ To write a DAG that intergrates multiple big data sources together, and create a
 ### Loading
 - Transformed files written to Google Cloud Storage
 - Loaded into BigQuery table
-- Run the dataset table with queriese to analyze job market data
+- Run the dataset table with queries to analyze job market data
 
 
 
