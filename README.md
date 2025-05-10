@@ -63,7 +63,7 @@ Since this project includes both local pipeline and upload to Google Cloud Platf
 - `sql` contains dataset with table in `job_market_tables.sql` and queries in `job_market_queries.sql`
 
 ```
-ChienChi_Liu/
+Job-data-integration/
 ├── README.md
 ├── DAGs/
 │   ├── api_connection
